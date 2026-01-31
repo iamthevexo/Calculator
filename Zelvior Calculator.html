@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zelvior Compact Scientific Engine</title>
+    <meta name="description" content="Professional Step-Based Scientific Calculator by Zelvior">
+    <style>
+        :root {
+            --bg: #050505;
+            --glass-panel: rgba(20, 20, 20, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --glass-highlight: rgba(255, 255, 255, 0.05);
+            --text-main: #f0f0f0;
+            --text-dim: #666;
+            --accent: #ffffff;
+            --danger: #ff4444; 
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+            --radius: 12px;
+            --btn-h: 48px;
+        }
+
+        /* --- Reset & Base --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* App-like feel */
+            background-image: 
+                radial-gradient(circle at 0% 0%, rgba(50, 50, 50, 0.3) 0%, transparent 40%),
+                radial-gradient(circle at 100% 100%, rgba(40, 40, 40, 0.3) 0%, transparent 40%);
+        }
+
+        /* --- Glassmorphism --- */
+        .glass {
+            background: var(--glass-panel);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+        }
+
+        /* --- Layout --- */
+        #app-container {
+            display: flex;
+            flex: 1;
+            height: 100%;
+            position: relative;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* --- Main Calculator Area --- */
+        #main-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+            height: 100%;
+            z-index: 1;
+            transition: transform 0.3s ease;
+        }
+
+        /* --- Display Section --- */
+        .display-container {
+            border-radius: var(--radius);
+            padding: 15px 20px;
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            min-height: 140px;
+            position: relative;
+            transition: height 0.3s ease;
+        }
+
+        .indicators {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            display: flex;
+            gap: 10px;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+        
+        .indicator.active { color: var(--accent); text-shadow: 0 0 8px rgba(255,255,255,0.4); }
+
+        .prev-expression {
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            min-height: 1.2em;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            margin-bottom: 5px;
+        }
+
+        .current-input {
+            font-family: var(--font-mono);
+            font-size: 2.8rem;
+            font-weight: 300;
+            word-break: break-all;
+            line-height: 1.1;
+        }
+
+        /* --- Tool Bar --- */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 5px;
+        }
+
+        .tool-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .tool-btn:hover { color: var(--text-main); background: rgba(255,255,255,0.05); }
+        .tool-btn svg { width: 20px; height: 20px; }
+
+        /* --- Keypad --- */
+        .keypad {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr); /* 5 columns for scientific layout */
+            gap: 6px;
+            padding-bottom: 10px;
+        }
+
+        button.key {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button.key:active { transform: scale(0.95); background: rgba(255,255,255,0.1); }
+        
+        /* Key Types */
+        .key.num { font-size: 1.2rem; background: rgba(255,255,255,0.01); }
+        .key.op { color: #fff; font-weight: bold; background: rgba(255,255,255,0.08); }
+        .key.fn { font-size: 0.85rem; color: #aaa; }
+        .key.action { color: #fff; border-color: rgba(255,255,255,0.3); }
+        .key.equals { background: #fff; color: #000; font-weight: 800; }
+        .key.equals:active { background: #ddd; }
+        
+        /* Secondary function notation (small text) */
+        .key sup { font-size: 0.6em; margin-left: 2px; }
+
+        /* --- Sidebar (History/Settings/Formulas) --- */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 350px;
+            height: 100%;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--glass-border);
+        }
+
+        #sidebar.open { transform: translateX(0); }
+
+        .sidebar-header {
+            padding: 15px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .tabs {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            color: var(--text-dim);
+            border-radius: 4px;
+        }
+        .tab.active { background: rgba(255,255,255,0.1); color: #fff; }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        /* History Items */
+        .hist-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--glass-border);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .hist-item:hover { background: rgba(255,255,255,0.05); }
+        .hist-expr { font-size: 0.9rem; color: var(--text-dim); margin-bottom: 4px; font-family: var(--font-mono); }
+        .hist-res { font-size: 1.2rem; color: #fff; font-weight: 600; font-family: var(--font-mono); }
+        
+        /* Steps Block */
+        .steps-container { margin-top: 10px; border-left: 2px solid var(--glass-border); padding-left: 10px; font-size: 0.85rem; color: #aaa; display: none; }
+        .steps-container.show { display: block; }
+        .step-row { margin-bottom: 6px; }
+        .step-eq { color: #fff; font-family: var(--font-mono); }
+
+        /* Settings */
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .toggle {
+            width: 40px; height: 22px; background: rgba(255,255,255,0.1); border-radius: 20px; position: relative; cursor: pointer; transition: 0.3s;
+        }
+        .toggle::after {
+            content:''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: 0.3s;
+        }
+        .toggle.checked { background: #fff; }
+        .toggle.checked::after { transform: translateX(18px); background: #000; }
+
+        /* Formula Grid */
+        .formula-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        .formula-category { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 1px; margin: 15px 0 5px; }
+        .formula-btn {
+            background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; border: 1px solid var(--glass-border);
+        }
+        .formula-btn:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); }
+        .formula-name { font-size: 0.9rem; color: #ddd; }
+        .formula-symbol { font-family: 'Times New Roman', serif; font-style: italic; color: #888; font-size: 1.1rem; }
+
+        /* --- Footer --- */
+        footer {
+            background: #000;
+            border-top: 1px solid var(--glass-border);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            z-index: 10;
+        }
+        .footer-icons { display: flex; gap: 15px; }
+        .footer-icons a { color: var(--text-dim); transition: 0.3s; }
+        .footer-icons a:hover { color: #fff; transform: translateY(-2px); }
+        .footer-icons svg { width: 18px; height: 18px; fill: currentColor; }
+
+        /* --- Input Modal for Formulas --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+            z-index: 200; display: none; align-items: center; justify-content: center;
+        }
+        .modal {
+            width: 90%; max-width: 400px; padding: 20px; background: #111; border: 1px solid var(--glass-border); border-radius: 16px;
+        }
+        .modal input {
+            width: 100%; background: #222; border: 1px solid #333; padding: 10px; color: #fff; margin: 5px 0 15px; border-radius: 6px;
+        }
+
+        /* Responsive */
+        @media (min-width: 1000px) {
+            #main-view { padding: 40px; max-width: 800px; margin: 0 auto; }
+            #sidebar { width: 400px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <!-- Main Calculator -->
+        <div id="main-view">
+            
+            <div class="glass display-container">
+                <div class="indicators">
+                    <span id="ind-deg" class="indicator">DEG</span>
+                    <span id="ind-rad" class="indicator">RAD</span>
+                    <span id="ind-mem" class="indicator">M</span>
+                </div>
+                <div class="prev-expression" id="prev-display"></div>
+                <div class="current-input" id="display">0</div>
+            </div>
+
+            <div class="toolbar">
+                <button class="tool-btn" onclick="toggleSidebar('history')" title="History">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
+                <button class="tool-btn" onclick="toggleSidebar('formula')" title="Formulas">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                </button>
+                <button class="tool-btn" onclick="toggleSidebar('settings')" title="Settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"></path></svg>
+                </button>
+            </div>
+
+            <div class="keypad">
+                <!-- Row 1: Memory & Clear -->
+                <button class="key fn" onclick="mem('MC')">MC</button>
+                <button class="key fn" onclick="mem('MR')">MR</button>
+                <button class="key fn" onclick="mem('M+')">M+</button>
+                <button class="key fn" onclick="mem('MS')">MS</button>
+                <button class="key action" onclick="action('AC')" style="color:#ff6666">AC</button>
+
+                <!-- Row 2: Trig & Scientific -->
+                <button class="key fn" onclick="insert('sin(')">sin</button>
+                <button class="key fn" onclick="insert('cos(')">cos</button>
+                <button class="key fn" onclick="insert('tan(')">tan</button>
+                <button class="key fn" onclick="toggleHyp()">hyp</button>
+                <button class="key action" onclick="action('DEL')">⌫</button>
+
+                <!-- Row 3: Advanced -->
+                <button class="key fn" onclick="insert('log(')">log</button>
+                <button class="key fn" onclick="insert('ln(')">ln</button>
+                <button class="key fn" onclick="insert('(')">(</button>
+                <button class="key fn" onclick="insert(')')">)</button>
+                <button class="key op" onclick="insert('/')">÷</button>
+
+                <!-- Row 4: Math/Const -->
+                <button class="key fn" onclick="insert('^')">xʸ</button>
+                <button class="key fn" onclick="insert('sqrt(')">√</button>
+                <button class="key num" onclick="insert(7)">7</button>
+                <button class="key num" onclick="insert(8)">8</button>
+                <button class="key num" onclick="insert(9)">9</button>
+                
+                <!-- Row 5 -->
+                <button class="key fn" onclick="insert('nPr(')">nPr</button>
+                <button class="key fn" onclick="insert('nCr(')">nCr</button>
+                <button class="key num" onclick="insert(4)">4</button>
+                <button class="key num" onclick="insert(5)">5</button>
+                <button class="key num" onclick="insert(6)">6</button>
+
+                <!-- Row 6 -->
+                <button class="key fn" onclick="insert('fact(')">n!</button>
+                <button class="key op" onclick="insert('*')">×</button>
+                <button class="key num" onclick="insert(1)">1</button>
+                <button class="key num" onclick="insert(2)">2</button>
+                <button class="key num" onclick="insert(3)">3</button>
+
+                <!-- Row 7 -->
+                <button class="key fn" onclick="insert('PI')">π</button>
+                <button class="key op" onclick="insert('-')">−</button>
+                <button class="key num" onclick="insert('.')">.</button>
+                <button class="key num" onclick="insert(0)">0</button>
+                <button class="key op" onclick="insert('+')">+</button>
+
+                <!-- Row 8 (Full Width Equals + extras) -->
+                <button class="key fn" onclick="insert('e')">e</button>
+                <button class="key fn" onclick="insert('abs(')">abs</button>
+                <button class="key equals" style="grid-column: span 3" onclick="solve()">=</button>
+            </div>
+        </div>
+
+        <!-- Sidebar Panel -->
+        <div id="sidebar" class="glass">
+            <div class="sidebar-header">
+                <span id="sidebar-title">History</span>
+                <button class="tool-btn" onclick="toggleSidebar()">✕</button>
+            </div>
+            
+            <div class="tabs">
+                <div class="tab" onclick="switchTab('history')" id="tab-history">History</div>
+                <div class="tab" onclick="switchTab('formula')" id="tab-formula">Formulas</div>
+                <div class="tab" onclick="switchTab('settings')" id="tab-settings">Settings</div>
+            </div>
+
+            <div class="sidebar-content" id="panel-content">
+                <!-- Content injected via JS -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Formula Modal -->
+    <div class="modal-overlay" id="formula-modal">
+        <div class="modal glass">
+            <h3 id="f-modal-title" style="margin-bottom: 10px;">Formula</h3>
+            <div id="f-modal-inputs"></div>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="key op" style="flex:1" onclick="calcFormula()">Calculate</button>
+                <button class="key fn" style="flex:1" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="footer-text">Made by Zelvior</div>
+        <div class="footer-icons">
+            <a href="https://youtube.com/@thevexo.zelvior" target="_blank"><svg viewBox="0 0 24 24"><path d="M23.5 6.2c-.3-1.1-1.2-2-2.3-2.3C19.2 3.4 12 3.4 12 3.4s-7.2 0-9.2.5c-1.1.3-2 1.2-2.3 2.3C0 8.2 0 12 0 12s0 3.8.5 5.8c.3 1.1 1.2 2 2.3 2.3 2 .5 9.2.5 9.2.5s7.2 0 9.2-.5c1.1-.3 2-1.2 2.3-2.3.5-2 .5-5.8.5-5.8s0-3.8-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg></a>
+            <a href="https://forms.gle/nhRCZsUxjyvarTHV7" target="_blank"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91 3.05.78 4.13 1.58 4.13 3.73-.01 1.8-1.15 2.93-3.07 3.34z"/></svg></a>
+            <a href="mailto:Zelvior@proton.me"><svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></a>
+        </div>
+    </footer>
+
+    <script>
+        /**
+         * System Configuration & State
+         */
+        const Config = {
+            precision: 8,
+            haptic: true,
+            angleMode: 'deg', // deg or rad
+            theme: 'dark'
+        };
+
+        const State = {
+            expression: '',
+            memory: 0,
+            history: [],
+            isHyp: false,
+            sidebarOpen: false
+        };
+
+        // --- Core Math Engine ---
+
+        const MATH = {
+            fact: (n) => {
+                if(n < 0) return NaN;
+                if(n === 0) return 1;
+                let r = 1; 
+                for(let i=2; i<=n; i++) r *= i; 
+                return r;
+            },
+            nPr: (n, r) => MATH.fact(n) / MATH.fact(n - r),
+            nCr: (n, r) => MATH.fact(n) / (MATH.fact(r) * MATH.fact(n - r)),
+            degToRad: (d) => d * (Math.PI / 180),
+            radToDeg: (r) => r * (180 / Math.PI)
+        };
+
+        function tokenize(expr) {
+            // Replace constants
+            expr = expr.replace(/PI/g, Math.PI).replace(/e/g, Math.E);
+            // Identify tokens including advanced scientific functions
+            const regex = /([0-9]+\.?[0-9]*)|(asin|acos|atan|sinh|cosh|tanh|sin|cos|tan|log|ln|sqrt|fact|nPr|nCr|abs|exp)|(\^|\*|\/|\+|\-|\(|\))/g;
+            const tokens = [];
+            let m;
+            while ((m = regex.exec(expr)) !== null) tokens.push(m[0]);
+            return tokens;
+        }
+
+        function solveExpression(expr) {
+            const tokens = tokenize(expr);
+            const rpn = shuntingYard(tokens);
+            return evaluateRPN(rpn);
+        }
+
+        const OPS = {
+            '+': {p:1, a:'L'}, '-': {p:1, a:'L'},
+            '*': {p:2, a:'L'}, '/': {p:2, a:'L'},
+            '^': {p:3, a:'R'}
+        };
+
+        function shuntingYard(tokens) {
+            const out = [], stack = [];
+            tokens.forEach(t => {
+                if(!isNaN(parseFloat(t))) out.push(parseFloat(t));
+                else if(t in OPS) {
+                    while(stack.length && stack[stack.length-1] in OPS &&
+                        ((OPS[t].a==='L' && OPS[t].p <= OPS[stack[stack.length-1]].p) ||
+                         (OPS[t].a==='R' && OPS[t].p < OPS[stack[stack.length-1]].p))) {
+                        out.push(stack.pop());
+                    }
+                    stack.push(t);
+                } else if(t === '(') stack.push(t);
+                else if(t === ')') {
+                    while(stack.length && stack[stack.length-1] !== '(') out.push(stack.pop());
+                    stack.pop();
+                    if(stack.length && /^[a-z]/.test(stack[stack.length-1])) out.push(stack.pop());
+                } else stack.push(t); // function
+            });
+            while(stack.length) out.push(stack.pop());
+            return out;
+        }
+
+        function evaluateRPN(rpn) {
+            const stack = [];
+            const steps = [];
+
+            rpn.forEach(t => {
+                if(typeof t === 'number') stack.push(t);
+                else if(t in OPS) {
+                    const b = stack.pop(), a = stack.pop();
+                    let res = 0;
+                    if(t==='+') res = a+b;
+                    if(t==='-') res = a-b;
+                    if(t==='*') res = a*b;
+                    if(t==='/') res = a/b;
+                    if(t==='^') res = Math.pow(a,b);
+                    stack.push(res);
+                    steps.push({eq: `${a} ${t} ${b}`, res: res.toFixed(4)});
+                } else {
+                    const isBinary = ['nPr', 'nCr'].includes(t);
+                    if (isBinary) {
+                        const b = stack.pop(), a = stack.pop();
+                        const res = MATH[t](a,b);
+                        stack.push(res);
+                        steps.push({eq: `${t}(${a},${b})`, res: res});
+                    } else {
+                        const a = stack.pop();
+                        let res = 0;
+                        let val = a;
+                        if(['sin','cos','tan'].includes(t) && Config.angleMode === 'deg') val = MATH.degToRad(a);
+                        
+                        if(t === 'sin') res = Math.sin(val);
+                        else if(t === 'cos') res = Math.cos(val);
+                        else if(t === 'tan') res = Math.tan(val);
+                        else if(t === 'asin') res = Config.angleMode==='deg' ? MATH.radToDeg(Math.asin(a)) : Math.asin(a);
+                        else if(t === 'acos') res = Config.angleMode==='deg' ? MATH.radToDeg(Math.acos(a)) : Math.acos(a);
+                        else if(t === 'atan') res = Config.angleMode==='deg' ? MATH.radToDeg(Math.atan(a)) : Math.atan(a);
+                        else if(t === 'sinh') res = Math.sinh(a);
+                        else if(t === 'cosh') res = Math.cosh(a);
+                        else if(t === 'tanh') res = Math.tanh(a);
+                        else if(t === 'log') res = Math.log10(a);
+                        else if(t === 'ln') res = Math.log(a);
+                        else if(t === 'sqrt') res = Math.sqrt(a);
+                        else if(t === 'fact') res = MATH.fact(a);
+                        else if(t === 'abs') res = Math.abs(a);
+                        else if(t === 'exp') res = Math.exp(a);
+                        
+                        stack.push(res);
+                        steps.push({eq: `${t}(${a})`, res: res.toFixed(6)});
+                    }
+                }
+            });
+            return { result: stack[0], steps };
+        }
+
+        // --- UI Interactions ---
+
+        const Display = {
+            curr: document.getElementById('display'),
+            prev: document.getElementById('prev-display'),
+            update: () => Display.curr.innerText = State.expression || '0'
+        };
+
+        function insert(val) {
+            vibrate();
+            State.expression += val;
+            Display.update();
+        }
+
+        function action(type) {
+            vibrate();
+            if(type === 'AC') {
+                State.expression = '';
+                Display.prev.innerText = '';
+            } else if(type === 'DEL') {
+                State.expression = State.expression.slice(0, -1);
+            }
+            Display.update();
+        }
+
+        function solve() {
+            vibrate();
+            if(!State.expression) return;
+            try {
+                const resObj = solveExpression(State.expression);
+                const finalRes = parseFloat(resObj.result.toFixed(Config.precision));
+                
+                State.history.unshift({
+                    ts: new Date().toLocaleTimeString(),
+                    expr: State.expression,
+                    res: finalRes,
+                    steps: resObj.steps
+                });
+                if(State.history.length > 50) State.history.pop();
+                localStorage.setItem('zelvior_hist', JSON.stringify(State.history));
+                
+                Display.prev.innerText = State.expression + ' =';
+                Display.curr.innerText = finalRes;
+                State.expression = String(finalRes);
+                
+                if(document.getElementById('tab-history').classList.contains('active')) renderHistory();
+
+            } catch(e) {
+                Display.curr.innerText = "Error";
+                setTimeout(() => Display.update(), 1500);
+            }
+        }
+
+        function toggleHyp() {
+            vibrate();
+            State.isHyp = !State.isHyp;
+            const keys = document.querySelectorAll('.key.fn');
+            const btnSin = [...keys].find(k => k.innerText.includes('sin'));
+            const btnCos = [...keys].find(k => k.innerText.includes('cos'));
+            const btnTan = [...keys].find(k => k.innerText.includes('tan'));
+            
+            if(State.isHyp) {
+                btnSin.innerText = 'sinh'; btnSin.onclick = () => insert('sinh(');
+                btnCos.innerText = 'cosh'; btnCos.onclick = () => insert('cosh(');
+                btnTan.innerText = 'tanh'; btnTan.onclick = () => insert('tanh(');
+            } else {
+                btnSin.innerText = 'sin'; btnSin.onclick = () => insert('sin(');
+                btnCos.innerText = 'cos'; btnCos.onclick = () => insert('cos(');
+                btnTan.innerText = 'tan'; btnTan.onclick = () => insert('tan(');
+            }
+        }
+
+        function mem(op) {
+            vibrate();
+            const curr = parseFloat(Display.curr.innerText) || 0;
+            if(op === 'MS') State.memory = curr;
+            if(op === 'MC') State.memory = 0;
+            if(op === 'MR') { State.expression += State.memory; Display.update(); }
+            if(op === 'M+') State.memory += curr;
+            
+            const el = document.getElementById('ind-mem');
+            if(State.memory !== 0) el.classList.add('active');
+            else el.classList.remove('active');
+        }
+
+        function toggleSidebar(tab = 'history') {
+            const el = document.getElementById('sidebar');
+            State.sidebarOpen = !State.sidebarOpen;
+            if(State.sidebarOpen) {
+                el.classList.add('open');
+                switchTab(tab);
+            } else {
+                el.classList.remove('open');
+            }
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            document.getElementById('sidebar-title').innerText = tab.charAt(0).toUpperCase() + tab.slice(1);
+            
+            const content = document.getElementById('panel-content');
+            content.innerHTML = '';
+
+            if(tab === 'history') renderHistory();
+            if(tab === 'formula') renderFormulas();
+            if(tab === 'settings') renderSettings();
+        }
+
+        function renderHistory() {
+            const target = document.getElementById('panel-content');
+            if(!State.history.length) { target.innerHTML = '<div style="color:#555; text-align:center; padding:20px;">No History</div>'; return; }
+            
+            let html = '<button class="key fn" style="width:100%; margin-bottom:10px" onclick="clearHist()">Clear All</button>';
+            State.history.forEach((h, i) => {
+                let stepsHtml = '';
+                if(h.steps && h.steps.length) {
+                    stepsHtml = `<div class="steps-container" id="step-${i}">
+                        ${h.steps.map(s => `<div class="step-row"><div class="step-eq">${s.eq}</div><div style="text-align:right">= ${s.res}</div></div>`).join('')}
+                    </div>`;
+                }
+                html += `
+                    <div class="hist-item" onclick="toggleSteps(${i})">
+                        <div class="hist-expr">${h.ts} | ${h.expr}</div>
+                        <div class="hist-res">= ${h.res}</div>
+                        ${stepsHtml}
+                    </div>
+                `;
+            });
+            target.innerHTML = html;
+        }
+
+        window.toggleSteps = (i) => {
+            const el = document.getElementById(`step-${i}`);
+            if(el) el.classList.toggle('show');
+        }
+        
+        window.clearHist = () => {
+            State.history = [];
+            localStorage.removeItem('zelvior_hist');
+            renderHistory();
+        }
+
+        function renderSettings() {
+            const target = document.getElementById('panel-content');
+            target.innerHTML = `
+                <div class="setting-row"><span>Haptic Feedback</span><div class="toggle ${Config.haptic ? 'checked' : ''}" onclick="toggleSet('haptic')"></div></div>
+                <div class="setting-row"><span>Angle Mode: ${Config.angleMode.toUpperCase()}</span><div class="toggle ${Config.angleMode==='deg' ? 'checked' : ''}" onclick="toggleSet('angle')"></div></div>
+                <div class="setting-row" style="flex-direction:column; align-items:flex-start; gap:10px;">
+                    <span>Precision: <span id="prec-val">${Config.precision}</span></span>
+                    <input type="range" min="0" max="10" value="${Config.precision}" style="width:100%" oninput="updatePrec(this.value)">
+                </div>
+                <div class="setting-row"><button class="key action" style="width:100%; color:#ff6666" onclick="resetAll()">Reset App Data</button></div>
+            `;
+        }
+
+        window.toggleSet = (k) => {
+            if(k === 'haptic') Config.haptic = !Config.haptic;
+            if(k === 'angle') {
+                Config.angleMode = Config.angleMode === 'deg' ? 'rad' : 'deg';
+                document.getElementById('ind-deg').className = `indicator ${Config.angleMode==='deg'?'active':''}`;
+                document.getElementById('ind-rad').className = `indicator ${Config.angleMode==='rad'?'active':''}`;
+            }
+            renderSettings();
+            saveConfig();
+        }
+
+        window.updatePrec = (v) => { Config.precision = parseInt(v); document.getElementById('prec-val').innerText = v; saveConfig(); }
+        window.resetAll = () => { if(confirm('Reset all settings and history?')) { localStorage.clear(); location.reload(); } }
+
+        // --- Formulas Expansion ---
+        const FormulaCategories = {
+            GENERAL: 'Algebra & Geometry',
+            PHYSICS: 'Physics & Mechanics',
+            CHEMISTRY: 'Chemistry & Atoms',
+            ELECTRICAL: 'Electrical Engineering'
+        };
+
+        const Formulas = [
+            // Algebra
+            { cat: 'GENERAL', id: 'quad', name: 'Quadratic Equation', symbol: 'ax²+bx+c', inputs: ['a','b','c'], fn: (v) => {
+                const d = v.b*v.b - 4*v.a*v.c;
+                if(d < 0) return 'Complex Roots';
+                const r1 = (-v.b + Math.sqrt(d))/(2*v.a);
+                const r2 = (-v.b - Math.sqrt(d))/(2*v.a);
+                return `x₁=${r1.toFixed(3)}, x₂=${r2.toFixed(3)}`;
+            }},
+            { cat: 'GENERAL', id: 'pythag', name: 'Pythagorean Hypotenuse', symbol: '√(a²+b²)', inputs: ['a','b'], fn: (v) => Math.sqrt(v.a**2 + v.b**2).toFixed(3) },
+            { cat: 'GENERAL', id: 'sphere', name: 'Sphere Vol & Area', symbol: '4/3πr³', inputs: ['r'], fn: (v) => `V:${((4/3)*Math.PI*v.r**3).toFixed(2)}, A:${(4*Math.PI*v.r**2).toFixed(2)}` },
+            
+            // Physics
+            { cat: 'PHYSICS', id: 'force', name: 'Newton\'s Second Law', symbol: 'F=ma', inputs: ['m', 'a'], fn: (v) => (v.m * v.a).toFixed(2) + ' N' },
+            { cat: 'PHYSICS', id: 'ke', name: 'Kinetic Energy', symbol: '½mv²', inputs: ['m', 'v'], fn: (v) => (0.5 * v.m * v.v**2).toFixed(2) + ' J' },
+            { cat: 'PHYSICS', id: 'pe', name: 'Potential Energy', symbol: 'mgh', inputs: ['m', 'h'], fn: (v) => (v.m * 9.81 * v.h).toFixed(2) + ' J' },
+            { cat: 'PHYSICS', id: 'pressure', name: 'Pressure', symbol: 'P=F/A', inputs: ['F', 'A'], fn: (v) => (v.F / v.A).toFixed(2) + ' Pa' },
+            { cat: 'PHYSICS', id: 'wave', name: 'Wave Velocity', symbol: 'v=fλ', inputs: ['f', 'lambda'], fn: (v) => (v.f * v.lambda).toFixed(2) + ' m/s' },
+            
+            // Chemistry
+            { cat: 'CHEMISTRY', id: 'ideal', name: 'Ideal Gas Law', symbol: 'PV=nRT', inputs: ['P', 'V', 'T_kelvin'], fn: (v) => ((v.P * v.V) / (0.0821 * v.T_kelvin)).toFixed(4) + ' moles (n)' },
+            { cat: 'CHEMISTRY', id: 'molarity', name: 'Molarity', symbol: 'M=n/V', inputs: ['moles', 'volume_L'], fn: (v) => (v.moles / v.volume_L).toFixed(3) + ' M' },
+            { cat: 'CHEMISTRY', id: 'ph', name: 'pH Calculation', symbol: '-log[H+]', inputs: ['H_concentration'], fn: (v) => (-Math.log10(v.H_concentration)).toFixed(2) },
+            
+            // Electrical
+            { cat: 'ELECTRICAL', id: 'ohms', name: 'Ohm\'s Law (V)', symbol: 'V=IR', inputs: ['I_amps', 'R_ohms'], fn: (v) => (v.I_amps * v.R_ohms).toFixed(2) + ' V' },
+            { cat: 'ELECTRICAL', id: 'power', name: 'Electrical Power', symbol: 'P=IV', inputs: ['I_amps', 'V_volts'], fn: (v) => (v.I_amps * v.V_volts).toFixed(2) + ' W' },
+            { cat: 'ELECTRICAL', id: 'res_p', name: 'Parallel Resistance', symbol: '1/Σ(1/R)', inputs: ['R1', 'R2'], fn: (v) => (1 / ( (1/v.R1) + (1/v.R2) )).toFixed(3) + ' Ω' }
+        ];
+
+        function renderFormulas() {
+            const target = document.getElementById('panel-content');
+            let html = '';
+            
+            Object.keys(FormulaCategories).forEach(catKey => {
+                html += `<div class="formula-category">${FormulaCategories[catKey]}</div><div class="formula-grid">`;
+                Formulas.filter(f => f.cat === catKey).forEach(f => {
+                    html += `<div class="formula-btn" onclick="openFormulaModal('${f.id}')">
+                        <div class="formula-name">${f.name}</div>
+                        <div class="formula-symbol">${f.symbol}</div>
+                    </div>`;
+                });
+                html += '</div>';
+            });
+            
+            target.innerHTML = html;
+        }
+
+        let currFormula = null;
+        window.openFormulaModal = (id) => {
+            currFormula = Formulas.find(f => f.id === id);
+            document.getElementById('f-modal-title').innerText = currFormula.name;
+            const inputsDiv = document.getElementById('f-modal-inputs');
+            inputsDiv.innerHTML = currFormula.inputs.map(i => `<label style="font-size:0.75rem; color:#888; text-transform:uppercase;">${i.replace('_',' ')}</label><input type="number" id="inp_${i}" placeholder="0">`).join('');
+            document.getElementById('formula-modal').style.display = 'flex';
+        }
+
+        window.closeModal = () => document.getElementById('formula-modal').style.display = 'none';
+
+        window.calcFormula = () => {
+            const vals = {};
+            currFormula.inputs.forEach(i => { vals[i] = parseFloat(document.getElementById(`inp_${i}`).value) || 0; });
+            const res = currFormula.fn(vals);
+            closeModal();
+            Display.prev.innerText = `${currFormula.name}:`;
+            Display.curr.innerText = res;
+            if(State.sidebarOpen) toggleSidebar();
+        }
+
+        function vibrate() { if(Config.haptic && navigator.vibrate) navigator.vibrate(10); }
+        function saveConfig() { localStorage.setItem('zelvior_conf', JSON.stringify(Config)); }
+
+        (function init() {
+            const savedHist = localStorage.getItem('zelvior_hist');
+            if(savedHist) State.history = JSON.parse(savedHist);
+            const savedConf = localStorage.getItem('zelvior_conf');
+            if(savedConf) Object.assign(Config, JSON.parse(savedConf));
+            document.getElementById('ind-deg').className = `indicator ${Config.angleMode==='deg'?'active':''}`;
+            document.getElementById('ind-rad').className = `indicator ${Config.angleMode==='rad'?'active':''}`;
+        })();
+
+    </script>
+</body>
+</html>
